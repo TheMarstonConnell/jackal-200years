@@ -20,5 +20,5 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     }
   },
-  base: "/jackal-editor/"
+  base: "/jackal-200years/"
 })

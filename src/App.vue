@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { ref, type Ref } from 'vue'
-// @ts-ignore
-import { Editor }  from '@bytemd/vue-next'
 import gfm from '@bytemd/plugin-gfm'
 import 'bytemd/dist/index.css'
-import {type IWalletHandler, WalletHandler, FileIo, FileUploadHandler, StorageHandler, getFileTreeData} from '@jackallabs/jackal.js'
+import {WalletHandler, FileIo, FileUploadHandler, getFileTreeData} from '@jackallabs/jackal.js'
 import type {IUploadList} from '@jackallabs/jackal.js'
 
 type FileData = {
