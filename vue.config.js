@@ -1,3 +1,3 @@
 module.exports = {
-    publicPath: '/jackal-editor/'
+    publicPath: '/jackal-200years/'
   }
