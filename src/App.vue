@@ -1,18 +1,17 @@
 <script setup lang="ts">
 import { ref, type Ref } from 'vue'
-import gfm from '@bytemd/plugin-gfm'
 import 'bytemd/dist/index.css'
-import {WalletHandler, FileIo, FileUploadHandler, getFileTreeData} from '@jackallabs/jackal.js'
-import type {IUploadList} from '@jackallabs/jackal.js'
+import { type IWalletHandler, WalletHandler, type IFileIo, FileIo, FileUploadHandler, getFileTreeData } from '@jackallabs/jackal.js'
+import type { IUploadList } from '@jackallabs/jackal.js'
 
 type FileData = {
   name: string;
   fid: string;
 };
 
-const wallet: Ref<any> = ref({})
-const walletActive : Ref<boolean> = ref(false)
-const fileIo: Ref<any> = ref({})
+const wallet: Ref<IWalletHandler | null> = ref(null)
+const walletActive: Ref<boolean> = ref(false)
+const fileIo: Ref<IFileIo | null> = ref(null)
 const data: Ref<FileData[]> = ref([])
 const singleFile: Ref<HTMLElement | null> = ref(null)
 
@@ -25,47 +24,47 @@ const mainnet = {
   queryAddr: 'https://grpc.jackalprotocol.com',
   txAddr: 'https://rpc.jackalprotocol.com',
   chainConfig: { // mainnet chain config
-      chainId: mSignerChain,
-      chainName: 'Jackal',
-      rpc: 'https://rpc.jackalprotocol.com',
-      rest: 'https://api.jackalprotocol.com',
-      bip44: {
-        coinType: 118
-      },
-      coinType: 118,
-      stakeCurrency: {
+    chainId: mSignerChain,
+    chainName: 'Jackal',
+    rpc: 'https://rpc.jackalprotocol.com',
+    rest: 'https://api.jackalprotocol.com',
+    bip44: {
+      coinType: 118
+    },
+    coinType: 118,
+    stakeCurrency: {
+      coinDenom: 'JKL',
+      coinMinimalDenom: 'ujkl',
+      coinDecimals: 6
+    },
+    bech32Config: {
+      bech32PrefixAccAddr: 'jkl',
+      bech32PrefixAccPub: 'jklpub',
+      bech32PrefixValAddr: 'jklvaloper',
+      bech32PrefixValPub: 'jklvaloperpub',
+      bech32PrefixConsAddr: 'jklvalcons',
+      bech32PrefixConsPub: 'jklvalconspub'
+    },
+    currencies: [
+      {
         coinDenom: 'JKL',
         coinMinimalDenom: 'ujkl',
         coinDecimals: 6
-      },
-      bech32Config: {
-        bech32PrefixAccAddr: 'jkl',
-        bech32PrefixAccPub: 'jklpub',
-        bech32PrefixValAddr: 'jklvaloper',
-        bech32PrefixValPub: 'jklvaloperpub',
-        bech32PrefixConsAddr: 'jklvalcons',
-        bech32PrefixConsPub: 'jklvalconspub'
-      },
-      currencies: [
-        {
-          coinDenom: 'JKL',
-          coinMinimalDenom: 'ujkl',
-          coinDecimals: 6
+      }
+    ],
+    feeCurrencies: [
+      {
+        coinDenom: 'JKL',
+        coinMinimalDenom: 'ujkl',
+        coinDecimals: 6,
+        gasPriceStep: {
+          low: 0.002,
+          average: 0.002,
+          high: 0.02
         }
-      ],
-      feeCurrencies: [
-        {
-          coinDenom: 'JKL',
-          coinMinimalDenom: 'ujkl',
-          coinDecimals: 6,
-          gasPriceStep: {
-            low: 0.002,
-            average: 0.002,
-            high: 0.02
-          }
-        }
-      ],
-      features: []
+      }
+    ],
+    features: []
   }
 }
 
@@ -85,7 +84,7 @@ async function connectWallet() {
 
   fileIo.value = await FileIo.trackIo(wallet.value, '1.1.2')
 
-  const listOfFolders = [path] 
+  const listOfFolders = [path]
   // you can create as many folders as you would like this way
 
   // after the first time, this code can be used instead. this will only create new folders if they don't already exist
@@ -94,67 +93,67 @@ async function connectWallet() {
   updateFileList()
 }
 
-const uploadFile = async function (file: File) {
-  console.log(file)
+const complete = function () {
+  loading.value = false
+}
+
+const uploadFile = function (file: File) {
+  loading.value = true
 
   const fileName = file.name
   if (fileName.length == 0) {
     alert("file needs name")
+    complete()
     return
   }
 
-  loading.value = true
-
-
   const parentFolderPath = "s/" + path // replace this with your own path
-  const handler = await FileUploadHandler.trackFile(file, parentFolderPath)
-  const parent = await fileIo.value.downloadFolder(parentFolderPath)
-  console.log(parent)
-  const uploadList: IUploadList = {}
-  uploadList[fileName] =  {
-    data: null,
-    exists: false, 
-    handler: handler,
-    key: fileName,
-    uploadable: await handler.getForPublicUpload()
+
+  FileUploadHandler.trackFile(file, parentFolderPath).then((handler) => {
+    fileIo.value?.downloadFolder(parentFolderPath).then((parent) => {
+      const uploadList: IUploadList = {}
+      uploadList[fileName] = {
+        data: null,
+        exists: false,
+        handler: handler,
+        key: fileName,
+        uploadable: handler.getForPublicUpload()
+      }
+
+      fileIo.value?.staggeredUploadFiles(uploadList, parent, {
+        complete: 0,
+        timer: 0
+      }).then(() => {
+        if (wallet.value == null) {
+          complete()
+          return
+        }
+
+        getFileTreeData("s/" + path + "/" + fileName, wallet.value.getJackalAddress(), wallet.value.getQueryHandler()).then(f => {
+          const fFiles = f.value.files
+          if (fFiles == null) {
+            complete()
+            return
+          }
+          const fidList = JSON.parse(fFiles.contents)
+          const newFid = fidList.fids[0]
+          console.log(newFid)
+
+          updateFileList()
+          complete()
+        }).catch(complete)
+      }).catch(complete)
+    }).catch(complete)
+  }).catch(complete)
+
+
+}
+
+const openFile = async function (fileName: string) {
+  if (wallet.value == null) {
+    return
   }
-  
-  const details = await fileIo.value.staggeredUploadFiles(uploadList, parent, {counter: 0, complete: 0})
-  console.log(details)
-
-  const f = await getFileTreeData("s/" + path + "/" + fileName, wallet.value.getJackalAddress(), wallet.value.getQueryHandler())
-  const fFiles = f.value.files
-    if (fFiles == null) {
-      loading.value = false
-      return
-    }
-  const fidList = JSON.parse(fFiles.contents)
-  const newFid = fidList.fids[0]
-  console.log(newFid)
-
-  updateFileList()
-  loading.value = false
-  alert("Success!")
-}
-
-const loadFile = async function (fileName : string) {
-  const f = await getFileTreeData("s/" + path + "/" + fileName, wallet.value.getJackalAddress(), wallet.value.getQueryHandler())
-  const fFiles = f.value.files
-    if (fFiles == null) {
-      return
-    }
-  const fidList = JSON.parse(fFiles.contents)
-  const newFid = fidList.fids[0]
-
-  const response = await fetch("https://jackal.link/f/" + newFid)
-  content.value = await response.text()
-  console.log(content.value)
-
-  globFileName.value = fileName
-}
-
-const openFile = async function (fileName : string) {
-  const link = "https://jackal.link/p/" + wallet.value.getJackalAddress() + "/" +  path + "/" + fileName
+  const link = "https://jackal.link/p/" + wallet.value.getJackalAddress() + "/" + path + "/" + fileName
   const w = window.open(link, '_blank')
   if (w == null) {
     return
@@ -163,23 +162,21 @@ const openFile = async function (fileName : string) {
 }
 
 
-const content = ref('')
 const loading = ref(false)
-const globFileName = ref('')
 
-const plugins = [gfm()]
-
-const handleChange = (v: string) => {
-  content.value = v
-}
-
-const isDisabled = function() : boolean {
+const isDisabled = function (): boolean {
   return !walletActive.value || loading.value
 }
 
-async function updateFileList(){
+async function updateFileList() {
+  if (fileIo.value == null) {
+    return
+  }
+  if (wallet.value == null) {
+    return
+  }
   const listFiles = await fileIo.value.downloadFolder("s/" + path)
-  const files = listFiles.folderDetails.fileChildren
+  const files = listFiles.getFolderDetails().fileChildren
 
   let d = []
 
@@ -196,17 +193,17 @@ async function updateFileList(){
     const fidList = JSON.parse(dFiles.contents)
     const newFid = fidList.fids[0]
 
-    d[x] = {name: key, fid: newFid}
-    x ++
+    d[x] = { name: key, fid: newFid }
+    x++
   }
   console.log(d)
   data.value = d
 }
 
 async function addSingles(e: any) {
-    const { files } = e.target
-    const file = files[0]
-    uploadFile(file)
+  const { files } = e.target
+  const file = files[0]
+  uploadFile(file)
 }
 
 </script>
@@ -214,17 +211,11 @@ async function addSingles(e: any) {
 <template >
   <main>
     <h1>Jackal 200 Year Uploader</h1>
-    <button type="button" @click="connectWallet">{{ (walletActive == true) ? "Connected" : "Connect Wallet"}}</button>
-    <input
-        id="fileUpload"
-        ref="singleFile"
-        type="file"
-        :disabled="isDisabled()"
-        @change="addSingles"
-      />
+    <button type="button" @click="connectWallet">{{ (walletActive == true) ? "Connected" : "Connect Wallet" }}</button>
+    <input id="fileUpload" ref="singleFile" type="file" :disabled="isDisabled()" @change="addSingles" />
     <div class="files">
-      <div class="card" v-for="item in data" :key="item.name" @click="function () {openFile(item.name)}">
-        <h1 class="file-title">{{item.name}}</h1>
+      <div class="card" v-for="item in data" :key="item.name" @click="function () { openFile(item.name) }">
+        <h1 class="file-title">{{ item.name }}</h1>
       </div>
     </div>
   </main>
@@ -285,18 +276,18 @@ button:disabled {
 }
 
 .files {
-    display: grid;
-    grid-auto-flow: row; 
-    grid-template-columns: 1fr 1fr 1fr; 
-    gap: 10px 10px; 
-    margin-top: 30px;
+  display: grid;
+  grid-auto-flow: row;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px 10px;
+  margin-top: 30px;
 }
 
-.card > h1 {
+.card>h1 {
   font-size: 1.6em;
 }
 
-.card:hover > .file-title {
+.card:hover>.file-title {
   text-decoration: underline;
 }
 
@@ -307,5 +298,4 @@ button:disabled {
   overflow: hidden;
   cursor: pointer;
 }
-
 </style>
